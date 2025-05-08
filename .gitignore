@@ -1,0 +1,19 @@
+.venv*
+venv*
+.env
+*workspace
+*/__pycache__
+__pycache__
+.pytest_cache
+
+# PyBuilder
+target/
+
+#pycharm
+.idea/
+
+#vscode
+.vscode
+
+#mac
+*.DS_Store
