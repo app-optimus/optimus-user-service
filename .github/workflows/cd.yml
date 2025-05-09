@@ -15,8 +15,24 @@ jobs:
     steps:
     - name: Pull Docker image
       run: sudo docker pull appoptimus/optimus-user-service:latest
+
     - name: Delete Old docker container
       run: sudo docker rm -f optimus-user-service-container || true
-    - name: Run docker container
-      run: sudo docker run -d -p 8081:8080 --name optimus-user-service-container appoptimus/optimus-user-service
 
+    - name: Clone env-configs repo
+      env:
+        GH_TOKEN: ${{ secrets.ENV_CONFIGS_REPO_PAT }}
+      run: |
+        rm -rf envs
+        git clone --branch staging https://x-access-token:${GH_TOKEN}@github.com/app-optimus/optimus-envconfig.git envs
+
+    - name: Convert YAML to .env
+      run: |
+        sudo apt-get install -y yq
+        yq eval '. | to_entries | .[] | "\(.key)=\(.value)"' envs/user_service.yaml > user_service.env
+
+
+    - name: Run Docker container with envs
+      run: |
+        sudo docker run --env-file user_service.env -d -p 8081:8080 \
+        --name optimus-user-service-container appoptimus/optimus-user-service:latest
