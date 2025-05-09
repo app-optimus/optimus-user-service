@@ -18,5 +18,5 @@ jobs:
     - name: Delete Old docker container
       run: sudo docker rm -f optimus-user-service-container || true
     - name: Run docker container
-      run: sudo docker run -d -p 8080:8080 --name optimus-user-service-container appoptimus/optimus-user-service
+      run: sudo docker run -d -p 8081:8080 --name optimus-user-service-container appoptimus/optimus-user-service
 
