@@ -1,0 +1,19 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+
+    runs-on: self-hosted
+
+    steps:
+    - name: Pull Docker image
+      run: sudo docker pull appoptimus/optimus-user-service:latest
+    - name: Delete Old docker container
+      run: sudo docker rm -f optimus-user-service-container || true
+    - name: Run docker container
+      run: sudo docker run -d -p 8080:8080 --name optimus-user-service-container appoptimus/optimus-user-service
