@@ -28,7 +28,6 @@ jobs:
 
     - name: Convert YAML to .env
       run: |
-        sudo apt-get install -y yq
         yq eval '. | to_entries | .[] | "\(.key)=\(.value)"' envs/user_service.yaml > user_service.env
 
 
