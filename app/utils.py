@@ -21,4 +21,3 @@ def standard_response_generator(
     logger.info(f"RESPONSE_DATA : {response}")
     logger.info(f"RESPONSE_HEADERS : {api_response.headers}")
     return api_response
-
