@@ -20,4 +20,4 @@ jobs:
     - name: Build the Docker image
       run: docker build -t optimus-user-service .
     - name: Push to dockerhub
-      run: docker push app-optimus/optimus-user-service:latest
+      run: docker push appoptimus/optimus-user-service:latest
