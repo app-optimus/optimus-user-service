@@ -210,7 +210,7 @@ class UserDetails:
         self.logger = logger
 
     async def fetch_user_details(self, user_id: str = None, core_filters: dict = None):
-        columns = ["user_id", "user_name"]
+        columns = ["user_id", "user_name", "is_chief_admin"]
         _where = {f"{key} = '%s'": value for key, value in core_filters.items()}
         _where["active = %s"] = True
         if user_id:

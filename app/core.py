@@ -60,7 +60,7 @@ def verify_permission(submodules: list = [], exempt_methods: list = []):
             # required for cases where verify permission is used to allow only internal RPC calls
             user = request.app.user if hasattr(request.app, "user") else {}
 
-            user_type = user.get("user_type")
+            is_chief_admin = user.get("is_chief_admin")
             module_name = MODULE_NAME
             route = request.scope.get("route")
             endpoint_name = route.name
@@ -72,7 +72,7 @@ def verify_permission(submodules: list = [], exempt_methods: list = []):
 
             if rpc_secret_key and request.headers.get("RPC_SECRET_KEY") == rpc_secret_key:
                 verified = True
-            elif user_type == UserTypes.chief_admin:
+            elif is_chief_admin:
                 verified = True
             else:
                 for submodule in submodules:
