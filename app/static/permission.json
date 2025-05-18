@@ -1,0 +1,30 @@
+{
+    "User Management Module": {
+        "users": {
+            "meta_data": {"name": "User Management", "description": "Ability to create, edit and delete in the user management section of settings"},
+            "read": {
+                "entity-user": ["GET"]
+            },
+            "write": {
+                "user": ["POST"],
+                "company-user": ["POST", "PATCH", "DELETE"],
+                "company-user-v2": ["POST", "PATCH", "DELETE"]
+            },
+        },
+        "roles": {
+            "meta_data": {"name": "Roles Management", "description": "Ability to create, edit and modify hierarchy of roles in the user management section of settings"},
+            "write": {
+                "role": ["POST", "PATCH", "DELETE"]
+            },
+        },
+        "permissions": {
+            "meta_data": {"name": "Permission Group Management", "description": "Ability to create and edit permission groups for all users in the user management section of settings"},
+            "write": {
+                "profile": ["POST", "PATCH", "DELETE"]
+            },
+            "read": {
+                "entity_permissions": ["GET"]
+            },
+        }
+    }
+}
