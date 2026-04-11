@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.core import login_required, verify_permission
 from app.models.authentication import ValidateLogin
-from app.models.permissions import GetEntityPermissions, CreateEntityPermission
+from app.models.permissions import GetEntityPermissions, CreateEntityPermission, UpdateEntityPermission
 from app.services.authentication import Login
 from app.services.permissions import EntityPermissions
 from app.utils import standard_response_generator
@@ -26,6 +26,17 @@ async def _create_entity_permission(request: Request, data: CreateEntityPermissi
     entity_permissions_processor = EntityPermissions(db=request.app.db, logger=request.app.logger, x_user=request.app.user)
     success, message, status_code = await entity_permissions_processor.create_entity_permission(
         data.entity_id, data.permission_name, data.permissions
+    )
+    return standard_response_generator(success, message, status_code)
+
+
+@permissions.patch("/entity")
+@login_required
+@verify_permission(submodules=["permissions"])
+async def _update_entity_permission(request: Request, data: UpdateEntityPermission):
+    entity_permissions_processor = EntityPermissions(db=request.app.db, logger=request.app.logger, x_user=request.app.user)
+    success, message, status_code = await entity_permissions_processor.update_entity_permission(
+        data.entity_id, data.permission_id, data.model_dump(exclude_none=True)
     )
     return standard_response_generator(success, message, status_code)
 

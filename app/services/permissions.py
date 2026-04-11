@@ -4,7 +4,7 @@ from http import HTTPStatus
 from pymysql import IntegrityError
 
 from app.enums import Tables
-from app.utils import create_query_params, generate_nano_id, create_insert_query_with_values, is_unique_violation
+from app.utils import create_query_params, generate_nano_id, create_insert_query_with_values, create_update_query_with_values, is_unique_violation
 
 
 class EntityPermissions:
@@ -64,3 +64,25 @@ class EntityPermissions:
             return False, "Failed to create permission", HTTPStatus.INTERNAL_SERVER_ERROR
 
         return True, "Successfully created permission", HTTPStatus.CREATED
+
+    async def update_entity_permission(self, entity_id: str, permission_id: str, payload: dict):
+        update_data = {}
+        if "permission_name" in payload:
+            update_data["permission_name"] = payload["permission_name"]
+        if "permissions" in payload:
+            update_data["permission_json"] = json.dumps(payload["permissions"])
+
+        update_data["updated_by"] = self.x_user["user_id"]
+
+        where_condition = {"entity_id": entity_id, "permission_id": permission_id}
+        query, values = create_update_query_with_values(Tables.entity_permissions, update_data, where_condition)
+
+        try:
+            await self.db.execute(query=query, values=values)
+        except IntegrityError:
+            return False, "Permission with same name already exists", HTTPStatus.BAD_REQUEST
+        except Exception as e:
+            self.logger.error(f"failed to update entity permission due to {e}")
+            return False, "Failed to update permission", HTTPStatus.INTERNAL_SERVER_ERROR
+
+        return True, "Successfully updated permission", HTTPStatus.OK
