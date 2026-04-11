@@ -6,6 +6,8 @@ class Tables:
     user_details = "user_details"
     entity_permissions = "entity_permissions"
     user_entity_details = "user_entity_details"
+    entity_details = "entity_details"
+    user_entity_class_details = "user_entity_class_details"
 
 
 class UserTypes(str, Enum):

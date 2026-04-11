@@ -70,7 +70,7 @@ def create_column_query(columns: list):
     return ", ".join(columns)
 
 
-async def execute_transactional_queries(db: Database, queries: List[Tuple[str, dict]]):
+async def execute_transactional_queries(db: Database, queries: List[Tuple[str, (dict, None)]]):
     async with db.transaction():
         for query_data in queries:
             await db.execute(query=query_data[0], values=query_data[1])
@@ -114,3 +114,20 @@ def is_unique_violation(exc: Exception) -> bool:
             if orig.args[0] == 1062:
                 return True
     return False
+
+
+def where_clause_for_multiple(key, values, equate_condition=True):
+    length = len(values)
+    _where = ""
+    if length == 1:
+        value = values[0]
+        _where = f"{key} = '{value}'"
+        if not equate_condition:
+            _where = f"{key} != '{value}'"
+    elif length > 1:
+        value = tuple(values)
+        _where = f"{key} in {value}"
+        if not equate_condition:
+            _where = f"{key} not in {value}"
+
+    return _where

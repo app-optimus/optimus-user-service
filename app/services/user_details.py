@@ -1,11 +1,14 @@
+import asyncio
 from http import HTTPStatus
+from io import BytesIO
+import pandas as pd
 
-import shortuuid
-
-from app.enums import Tables
+from app.constants import BULK_USER_CREATION_MAX_SIZE
+from app.enums import Tables, UserRoles
 from app.services.permissions import EntityPermissions
 from app.utils import create_query_params, create_insert_query_with_values, execute_transactional_queries, \
-    create_update_query_with_values, get_default_password, generate_salt, get_passkey, generate_nano_id
+    create_update_query_with_values, get_default_password, generate_salt, get_passkey, generate_nano_id, \
+    where_clause_for_multiple
 
 
 class UserCreation:
@@ -15,9 +18,12 @@ class UserCreation:
         self.logger = logger
         self.x_user = x_user
 
-    core_user_detail_columns = ["user_id", "user_name", "user_email", "user_code", "created_by", "updated_by"]
+    core_user_detail_columns = ["user_id", "user_name", "user_email", "opti_code", "created_by", "updated_by"]
     user_entity_detail_columns = ["entity_id", "user_id", "user_role", "permission_id", "created_by", "updated_by"]
     core_global_user_columns = ["user_id", "user_name", "user_email", "created_by", "updated_by", "is_chief_admin"]
+    bulk_user_creation_headers = {
+        "user_name", "user_email", "permission_id", "enrollment_number", "admission_number"
+    }
 
     async def create_global_user(self, payload: dict):
         success, user_details = await self.validate_user_already_exist(
@@ -80,9 +86,9 @@ class UserCreation:
             return False, "User with the provided email already exist", HTTPStatus.BAD_REQUEST, {}
 
         filters = {"permission_name": payload["permission_name"]}
-        status, _, _, permission_data = await EntityPermissions(db=self.db, logger=self.logger).fetch_entity_permissions(
-            payload["entity_id"], filters=filters
-        )
+        status, _, _, permission_data = await EntityPermissions(
+            db=self.db, logger=self.logger, x_user=self.x_user
+        ).fetch_entity_permissions(payload["entity_id"], filters=filters)
         if not status:
             return False, "failed to fetch permission details", HTTPStatus.INTERNAL_SERVER_ERROR, {}
 
@@ -105,8 +111,58 @@ class UserCreation:
 
         return success, message, status_code, data
 
+    async def update_user_details(self, payload: dict):
+        user_id = payload["user_id"]
+        entity_id = payload["entity_id"]
+        updated_by = self.x_user["user_id"]
+
+        queries = []
+
+        core_update_data = {}
+        if "user_name" in payload:
+            core_update_data["user_name"] = payload["user_name"]
+        if "user_email" in payload:
+            core_update_data["user_email"] = payload["user_email"]
+
+        if core_update_data:
+            core_update_data["updated_by"] = updated_by
+            core_query, core_values = create_update_query_with_values(
+                Tables.user_details, core_update_data, {"user_id": user_id}
+            )
+            queries.append((core_query, core_values))
+
+        entity_update_data = {}
+        if "user_role" in payload:
+            entity_update_data["user_role"] = payload["user_role"]
+
+        if "permission_name" in payload:
+            filters = {"permission_name": payload["permission_name"]}
+            status, _, _, permission_data = await EntityPermissions(
+                db=self.db, logger=self.logger, x_user=self.x_user
+            ).fetch_entity_permissions(entity_id, filters=filters)
+            if not status:
+                return False, "Failed to fetch permission details", HTTPStatus.INTERNAL_SERVER_ERROR, {}
+            if not permission_data:
+                return False, "Permission name provided doesn't exist", HTTPStatus.BAD_REQUEST, {}
+            entity_update_data["permission_id"] = list(permission_data.keys())[0]
+
+        if entity_update_data:
+            entity_update_data["updated_by"] = updated_by
+            entity_query, entity_values = create_update_query_with_values(
+                Tables.user_entity_details, entity_update_data, {"user_id": user_id, "entity_id": entity_id}
+            )
+            queries.append((entity_query, entity_values))
+
+        try:
+            await execute_transactional_queries(db=self.db, queries=queries)
+        except Exception as e:
+            self.logger.error(f"failed to execute update query due to {e}")
+            return False, "Failed to update user details", HTTPStatus.INTERNAL_SERVER_ERROR, {}
+
+        return True, "Successfully updated user details", HTTPStatus.OK, {"user_id": user_id}
+
     async def update_existing_user_data(self, user_id, payload):
-        core_user_columns = ["user_name", "user_code", "updated_by", "active", "is_deleted"]
+        core_user_columns = ["user_name", "updated_by", "active", "is_deleted"]
         payload.update({"active": True, "is_deleted": False})
         core_user_details, entity_user_details = dict(), dict()
         for column in core_user_columns:
@@ -175,7 +231,7 @@ class UserCreation:
         return True, "Successfully created user", HTTPStatus.OK, {"user_id": user_id}
 
     async def validate_user_already_exist(self, user_email):
-        _columns = ["ud.user_id", "ud.active", "ud.user_code"]
+        _columns = ["ud.user_id", "ud.active", "ud.opti_code"]
         where_dict = {
             "user_email = '%s'": user_email
         }
@@ -192,15 +248,158 @@ class UserCreation:
         user_details = {
             "is_active": False,
             "user_id": None,
-            "user_code": None
+            "opti_code": None
         }
 
         if response:
             user_details["user_id"] = response[0]["user_id"]
             user_details["is_active"] = response[0]["active"]
-            user_details["user_code"] = response[0]["user_code"]
+            user_details["opti_code"] = response[0]["opti_code"]
 
         return True, user_details
+
+    async def process_bulk_user_creation(self, entity_id, class_id, file_content):
+        # file content headers
+        # user_name | user_email | permission_id | roll_number | admission_number
+        excel_data = pd.read_excel(BytesIO(file_content), engine="openpyxl")
+        headers = set(list(excel_data.columns))
+
+        if headers != self.bulk_user_creation_headers:
+            return False, "Invalid headers provided in file", HTTPStatus.BAD_REQUEST
+
+        user_data = excel_data.to_dict(orient='records')
+        if len(user_data) > BULK_USER_CREATION_MAX_SIZE:
+            return False, f"Maximum {BULK_USER_CREATION_MAX_SIZE} can be created at a time", HTTPStatus.FORBIDDEN
+
+        permission_ids, user_emails, roll_numbers, admission_numbers = set(), set(), set(), set()
+
+        for data in user_data:
+            if not all([data[key] for key in self.bulk_user_creation_headers]):
+                return False, f"Please provide values for {data['user_email']}", HTTPStatus.BAD_REQUEST
+
+            admission_numbers.add(data.get('admission_number'))
+            permission_ids.add(data.get('permission_id'))
+            roll_numbers.add(data.get('roll_number'))
+
+        if len(user_data) != len(admission_numbers):
+            return False, "Duplicate admission numbers provided", HTTPStatus.BAD_REQUEST
+
+        if len(user_data) != roll_numbers:
+            return False, "Duplicate roll numbers provided", HTTPStatus.BAD_REQUEST
+
+        permission_validation, admission_number_validation, roll_number_validation = await asyncio.gather(
+            self.validate_permission_ids(entity_id, list(permission_ids)),
+            self.validate_admission_numbers(entity_id, list(admission_numbers)),
+            self.validate_enrollment_numbers(entity_id, class_id, list(roll_numbers))
+        )
+
+        if not permission_validation[0]:
+            return False, permission_validation[1], permission_validation[2]
+
+        if not admission_number_validation[0]:
+            return False, admission_number_validation[1], admission_number_validation[2]
+
+        if not roll_number_validation[0]:
+            return False, roll_number_validation[1], roll_number_validation[2]
+
+        status, message, status_code = await self.execute_bulk_user_creation_queries(entity_id, class_id, user_data)
+        return status, message, status_code
+
+    async def execute_bulk_user_creation_queries(
+        self, entity_id, class_id, user_data, user_role=UserRoles.student.value
+    ):
+        user_query = f"INSERT INTO {Tables.user_details} (user_id, user_name, user_email) VALUES (%s);"
+        user_entity_query = (f"INSERT INTO {Tables.user_entity_details} (entity_id, user_id, user_role, "
+                             f"permission_id, admission_number, class_id, roll_number) VALUES (%s);")
+        authentication_query = f"INSERT INTO {Tables.user_authentication} (user_id, user_passkey, salt) VALUES (%s);"
+
+        base_values, user_entity_values, auth_values = list(), list(), list()
+
+        for data in user_data:
+            user_id = generate_nano_id(length=10)
+            default_password = get_default_password(data["user_name"])
+            salt = generate_salt()
+            passkey = get_passkey(default_password, salt)
+
+            base_values.append(f"('{user_id}', '{data['user_name']}', '{data['user_email']}')")
+            user_entity_values.append(f"('{entity_id}', '{user_id}', '{user_role}', '{data['permission_id']}', "
+                                      f"'{data['admission_number']}', '{class_id}', '{data['roll_number']}')")
+            auth_values.append(f"('{user_id}', '{passkey}', '{salt}')")
+
+        queries = [
+            (user_query % (','.join(base_values)), None),
+            (user_entity_query % (','.join(user_entity_values)), None),
+            (authentication_query % (','.join(auth_values)), None),
+        ]
+
+        try:
+            await execute_transactional_queries(db=self.db, queries=queries)
+        except Exception as e:
+            self.logger.error(f"failed to execute insert queries due to {e}")
+            return False, "Failed to create users", HTTPStatus.INTERNAL_SERVER_ERROR
+
+        return True, "Successfully created users", HTTPStatus.OK
+
+    async def validate_permission_ids(self, entity_id: str, permission_ids: list):
+        _columns = ["permission_id"]
+        _where = {
+            "entity_id = '%s'": entity_id,
+            "active = %s": True,
+            where_clause_for_multiple('permission_id', permission_ids): ""
+        }
+        _columns, _where = create_query_params(columns=_columns, where_dict=_where)
+        query = f"SELECT {_columns} FROM {Tables.entity_permissions} WHERE {_where};"
+        try:
+            response = await self.db.fetch_all(query)
+        except Exception as e:
+            self.logger.error(f"failed to fetch entity permissions due to {e}")
+            return False, "Failed to fetch entity permissions", HTTPStatus.INTERNAL_SERVER_ERROR
+
+        if len(response) != len(permission_ids):
+            return False, "Some of the permissions provided doesn't exist", HTTPStatus.BAD_REQUEST
+
+        return True, "success", HTTPStatus.OK
+
+    async def validate_enrollment_numbers(self, entity_id, class_id, roll_numbers):
+        _columns = ["count(1)"]
+        _where = {
+            "entity_id = '%s'": entity_id,
+            "class_id = '%s'": class_id,
+            where_clause_for_multiple('roll_number', roll_numbers): "",
+            "active = %s": True
+        }
+        _columns, _where = create_query_params(columns=_columns, where_dict=_where)
+        query = f"SELECT {_columns} FROM {Tables.user_entity_details} WHERE {_where};"
+        try:
+            response = await self.db.fetch_all(query)
+        except Exception as e:
+            self.logger.error(f"failed to fetch user entity class data due to {e}")
+            return False, "Failed to fetch user class details", HTTPStatus.INTERNAL_SERVER_ERROR
+
+        if response and response[0].get("count") > 0:
+            return False, "Some of the roll numbers provided already exist in class", HTTPStatus.BAD_REQUEST,
+
+        return True, "success", HTTPStatus.OK
+
+    async def validate_admission_numbers(self, entity_id, admission_numbers):
+        _columns = ["count(1)"]
+        _where = {
+            "entity_id = '%s'": entity_id,
+            where_clause_for_multiple('admission_number', admission_numbers): "",
+            "active = %s": True
+        }
+        _columns, _where = create_query_params(columns=_columns, where_dict=_where)
+        query = f"SELECT {_columns} FROM {Tables.user_entity_details} WHERE {_where};"
+        try:
+            response = await self.db.fetch_all(query)
+        except Exception as e:
+            self.logger.error(f"failed to fetch user entity data due to {e}")
+            return False, "Failed to fetch entity details", HTTPStatus.INTERNAL_SERVER_ERROR
+
+        if response and response[0].get("count") > 0:
+            return False, "Some of the admission numbers provided already exist in class", HTTPStatus.BAD_REQUEST,
+
+        return True, "success", HTTPStatus.OK
 
 
 class UserDetails:

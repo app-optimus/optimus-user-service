@@ -1,7 +1,7 @@
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Form, File, UploadFile
 
-from app.models.user_details import UserCreationModel, GlobalUserCreationModel
+from app.models.user_details import UserCreationModel, GlobalUserCreationModel, BulkUserCreationModel, UserUpdateModel
 from app.services.user_details import UserCreation
 from app.utils import standard_response_generator
 from app.core import login_required
@@ -24,5 +24,27 @@ async def _create_global_user(request: Request, data: GlobalUserCreationModel):
     success, message, status_code, data = await user_creation_processor.create_global_user(data.model_dump())
     return standard_response_generator(success, message, status_code, data)
 
+
+@user_details.post("/bulk")
+@login_required
+async def _create_bulk_entity_user(
+    request: Request, entity_id: str = Form(...), class_id: str = Form(...), file: UploadFile = File(...)
+):
+    file_content = await file.read()
+    user_creation_processor = UserCreation(db=request.app.db, logger=request.app.logger, x_user=request.app.user)
+    success, message, status_code = await user_creation_processor.process_bulk_user_creation(
+        entity_id, class_id, file_content
+    )
+    return standard_response_generator(success, message, status_code)
+
+
+@user_details.patch("/")
+@login_required
+async def _update_user_details(request: Request, data: UserUpdateModel):
+    user_creation_processor = UserCreation(db=request.app.db, logger=request.app.logger, x_user=request.app.user)
+    success, message, status_code, data = await user_creation_processor.update_user_details(
+        data.model_dump(exclude_none=True)
+    )
+    return standard_response_generator(success, message, status_code, data)
 
 

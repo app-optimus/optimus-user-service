@@ -7,6 +7,7 @@ from starlette.middleware.cors import CORSMiddleware
 from app.routes.permissions import permissions
 from app.routes.authentication import authentication
 from app.routes.user_details import user_details
+from app.routes.entity_details import entity_details
 from app.settings import MYSQL_CONFIG, BASE_ROUTE, LOG_LEVEL, APP_NAME
 
 
@@ -43,6 +44,7 @@ def get_application() -> FastAPI:
     app.include_router(authentication, tags=["authentication"], prefix=BASE_ROUTE)
     app.include_router(permissions, tags=["permissions"], prefix=BASE_ROUTE + "/permission")
     app.include_router(user_details, tags=["user_details"], prefix=BASE_ROUTE)
+    app.include_router(entity_details, tags=["entity_details"], prefix=BASE_ROUTE + "/entity")
 
     return app
 
@@ -54,7 +56,7 @@ async def init_db(app: FastAPI):
     db_config = MYSQL_CONFIG
     DATABASE_URL = (
         f"mysql+aiomysql://{db_config['USER']}:{db_config['PASSWORD']}"
-        f"@{db_config['HOST']}:{db_config['PORT']}/{db_config['NAME']}"
+        f"@{db_config['HOST']}:{db_config['PORT']}/{db_config['NAME']}?useSSL=false&allowPublicKeyRetrieval=true"
     )
     app.db = Database(DATABASE_URL)
     await app.db.connect()
