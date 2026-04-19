@@ -78,3 +78,4 @@ class EntityService:
             return False, "Failed to create entity", HTTPStatus.INTERNAL_SERVER_ERROR
 
         return True, "Successfully created entity", HTTPStatus.CREATED
+

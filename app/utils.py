@@ -5,7 +5,7 @@ import nanoid
 from base64 import b64encode
 
 from os import urandom
-from typing import Tuple, List
+from typing import Optional, Tuple, List
 from uuid import UUID
 
 from databases import Database
@@ -70,7 +70,7 @@ def create_column_query(columns: list):
     return ", ".join(columns)
 
 
-async def execute_transactional_queries(db: Database, queries: List[Tuple[str, (dict, None)]]):
+async def execute_transactional_queries(db: Database, queries: List[Tuple[str, Optional[dict]]]):
     async with db.transaction():
         for query_data in queries:
             await db.execute(query=query_data[0], values=query_data[1])

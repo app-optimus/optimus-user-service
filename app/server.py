@@ -8,6 +8,7 @@ from app.routes.permissions import permissions
 from app.routes.authentication import authentication
 from app.routes.user_details import user_details
 from app.routes.entity_details import entity_details
+from app.routes.class_structure import class_structure
 from app.settings import MYSQL_CONFIG, BASE_ROUTE, LOG_LEVEL, APP_NAME
 
 
@@ -45,6 +46,7 @@ def get_application() -> FastAPI:
     app.include_router(permissions, tags=["permissions"], prefix=BASE_ROUTE + "/permission")
     app.include_router(user_details, tags=["user_details"], prefix=BASE_ROUTE)
     app.include_router(entity_details, tags=["entity_details"], prefix=BASE_ROUTE + "/entity")
+    app.include_router(class_structure, tags=["class_structure"], prefix=BASE_ROUTE + "/class-structure")
 
     return app
 

@@ -7,6 +7,8 @@ class Tables:
     entity_permissions = "entity_permissions"
     user_entity_details = "user_entity_details"
     entity_details = "entity_details"
+    entity_classes = "entity_classes"
+    entity_class_sections = "entity_class_sections"
     user_entity_class_details = "user_entity_class_details"
 
 
