@@ -1,5 +1,4 @@
 import uuid
-from _sha256 import sha256
 from http import HTTPStatus
 
 from app.enums import Tables

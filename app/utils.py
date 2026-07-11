@@ -61,8 +61,18 @@ def create_query_params(columns: list = None, where_dict: dict = None):
 
 
 def create_where_condition(where_dict: dict):
+    """
+    Build a WHERE clause from a dict of `"column = '%s'": value` pairs.
+
+    Some keys (e.g. output of `where_clause_for_multiple`) are already a
+    fully-formed condition with no `%s` placeholder - those are joined as-is
+    and excluded from the positional `%` substitution below, so they don't
+    throw off the value/placeholder alignment for the other keys.
+    """
     where_condition = " AND ".join(list(where_dict.keys()))
-    where_condition = where_condition % tuple(where_dict.values())
+    substitution_values = tuple(value for key, value in where_dict.items() if "%s" in key)
+    if substitution_values:
+        where_condition = where_condition % substitution_values
     return where_condition
 
 

@@ -12,6 +12,19 @@ class UserCreationModel(BaseModel):
     user_role: UserRoles
     permission_name: str
     opti_code: str = Field(default=None, min_length=1, max_length=10)
+    class_id: Optional[str] = None
+    section_id: Optional[str] = None
+    roll_number: Optional[str] = None
+    admission_number: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_student_fields(self):
+        if self.user_role == UserRoles.student:
+            required = ("class_id", "section_id", "roll_number", "admission_number")
+            missing = [field for field in required if getattr(self, field) is None]
+            if missing:
+                raise ValueError(f"Required for student role: {', '.join(missing)}")
+        return self
 
 
 class GlobalUserCreationModel(BaseModel):
@@ -37,4 +50,12 @@ class UserUpdateModel(BaseModel):
 
 class BulkUserCreationModel(BaseModel):
     entity_id: str = Field(min_length=12, max_length=12)
+
+
+class GetEntityUsers(BaseModel):
+    entity_id: str = Field(min_length=12, max_length=12)
+    class_id: Optional[str] = None
+    section_id: Optional[str] = None
+    user_role: Optional[UserRoles] = None
+    search: Optional[str] = None
 

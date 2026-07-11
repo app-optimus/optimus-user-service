@@ -8,7 +8,12 @@ from fastapi import FastAPI, Request
 
 from app.enums import UserTypes
 from app.services.user_details import UserDetails
-from app.settings import MODULE_NAME, CUSTOM_HEADER_RPC_SECRET_KEY
+from app.settings import (
+    MODULE_NAME,
+    CUSTOM_HEADER_RPC_SECRET_KEY,
+    GLOBAL_AUTH_TOKEN,
+    GLOBAL_AUTH_USER_ID,
+)
 from app.utils import _is_valid_uuid, standard_response_generator
 
 logger = logging.getLogger(__name__)
@@ -34,6 +39,17 @@ def login_required(func):
             return standard_response_generator(
                 success=False, message="authentication token is required", http_status=HTTPStatus.UNAUTHORIZED
             )
+
+        # Temporary bypass: a shared global token lets every client call the
+        # APIs before per-user login is wired up everywhere.
+        if GLOBAL_AUTH_TOKEN and auth_token == GLOBAL_AUTH_TOKEN:
+            request.app.user = {
+                "user_id": GLOBAL_AUTH_USER_ID,
+                "user_name": "Global Auth User",
+                "is_chief_admin": True,
+            }
+            return await func(*args, **kwargs)
+
         _, _, _, user = await UserDetails(db=request.app.db, logger=request.app.logger).fetch_user_details(
             core_filters={"authentication_token = '%s'": auth_token}
         )
