@@ -22,3 +22,8 @@ CUSTOM_HEADER_RPC_SECRET_KEY = getenv("RPC_SECRET_KEY")
 # this value, it is treated as a pre-authenticated chief-admin user.
 GLOBAL_AUTH_TOKEN = getenv("GLOBAL_AUTH_TOKEN", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 GLOBAL_AUTH_USER_ID = getenv("GLOBAL_AUTH_USER_ID", "global-dev-user")
+
+# Local-disk root for uploaded study material files. Kept behind the
+# StorageService interface (app/services/storage.py) so this can later be
+# swapped for a cloud bucket without touching callers.
+STUDY_MATERIALS_STORAGE_DIR = getenv("STUDY_MATERIALS_STORAGE_DIR", "./uploads/study_materials")

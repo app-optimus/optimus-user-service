@@ -19,7 +19,7 @@ class QuizService:
 
     async def _get_quiz(self, entity_id: str, quiz_id: str):
         query = (
-            f"SELECT quiz_id, entity_id, class_id, section_id, title, description, status "
+            f"SELECT quiz_id, entity_id, class_id, section_id, title, description, status, scheduled_start "
             f"FROM {Tables.quizzes} WHERE quiz_id = :quiz_id AND entity_id = :entity_id AND active = 1;"
         )
         return await self.db.fetch_one(query, values={"quiz_id": quiz_id, "entity_id": entity_id})
@@ -88,12 +88,12 @@ class QuizService:
 
         query = (
             f"SELECT q.quiz_id, q.entity_id, q.class_id, q.section_id, q.title, q.description, "
-            f"q.status, q.created_at, COUNT(qq.question_id) AS question_count "
+            f"q.status, q.scheduled_start, q.created_at, COUNT(qq.question_id) AS question_count "
             f"FROM {Tables.quizzes} q "
             f"LEFT JOIN {Tables.quiz_questions} qq ON qq.quiz_id = q.quiz_id AND qq.active = 1 "
             f"WHERE {where_clause} "
             f"GROUP BY q.quiz_id, q.entity_id, q.class_id, q.section_id, q.title, q.description, "
-            f"q.status, q.created_at "
+            f"q.status, q.scheduled_start, q.created_at "
             f"ORDER BY q.created_at DESC;"
         )
 
@@ -144,6 +144,7 @@ class QuizService:
             "title": quiz["title"],
             "description": quiz["description"],
             "status": quiz["status"],
+            "scheduled_start": quiz["scheduled_start"],
             "questions": questions,
         }
         return True, "Successfully fetched quiz detail", HTTPStatus.OK, data
@@ -206,7 +207,7 @@ class QuizService:
         if not quiz:
             return False, "Quiz not found", HTTPStatus.NOT_FOUND, {}
         if quiz["status"] != QuizStatus.draft.value:
-            return False, "Cannot add questions to a published quiz", HTTPStatus.BAD_REQUEST, {}
+            return False, "Cannot add questions once a quiz is marked ready or published", HTTPStatus.BAD_REQUEST, {}
 
         question_count = await self._count_active_questions(quiz_id)
         if question_count >= QUIZ_MAX_QUESTIONS:
@@ -248,7 +249,7 @@ class QuizService:
         if not quiz:
             return False, "Quiz not found", HTTPStatus.NOT_FOUND
         if quiz["status"] != QuizStatus.draft.value:
-            return False, "Cannot edit questions on a published quiz", HTTPStatus.BAD_REQUEST
+            return False, "Cannot edit questions once a quiz is marked ready or published", HTTPStatus.BAD_REQUEST
 
         update_data = {
             "question_type": payload["question_type"],
@@ -275,7 +276,7 @@ class QuizService:
         if not quiz:
             return False, "Quiz not found", HTTPStatus.NOT_FOUND
         if quiz["status"] != QuizStatus.draft.value:
-            return False, "Cannot delete questions from a published quiz", HTTPStatus.BAD_REQUEST
+            return False, "Cannot delete questions once a quiz is marked ready or published", HTTPStatus.BAD_REQUEST
 
         query = (
             f"UPDATE {Tables.quiz_questions} SET active = 0, updated_by = :updated_by "
@@ -298,19 +299,24 @@ class QuizService:
 
         return True, "Successfully deleted question", HTTPStatus.OK
 
-    async def publish_quiz(self, entity_id: str, quiz_id: str):
+    async def mark_quiz_ready(self, entity_id: str, quiz_id: str):
+        """
+        "Save" action: locks question editing (same as published) but stops
+        short of scheduling/going live. A ready quiz can still be moved back
+        to draft, unlike a published one.
+        """
         quiz = await self._get_quiz(entity_id, quiz_id)
         if not quiz:
             return False, "Quiz not found", HTTPStatus.NOT_FOUND
         if quiz["status"] != QuizStatus.draft.value:
-            return False, "Quiz is already published", HTTPStatus.BAD_REQUEST
+            return False, "Only draft quizzes can be marked ready", HTTPStatus.BAD_REQUEST
 
         question_count = await self._count_active_questions(quiz_id)
         if not (QUIZ_MIN_QUESTIONS <= question_count <= QUIZ_MAX_QUESTIONS):
             return (
                 False,
-                f"A quiz needs between {QUIZ_MIN_QUESTIONS} and {QUIZ_MAX_QUESTIONS} questions to be "
-                f"published (currently has {question_count})",
+                f"A quiz needs between {QUIZ_MIN_QUESTIONS} and {QUIZ_MAX_QUESTIONS} questions before "
+                f"it can be marked ready (currently has {question_count})",
                 HTTPStatus.BAD_REQUEST,
             )
 
@@ -319,7 +325,63 @@ class QuizService:
             f"WHERE quiz_id = :quiz_id AND entity_id = :entity_id;"
         )
         values = {
+            "status": QuizStatus.ready.value,
+            "updated_by": self.x_user["user_id"],
+            "quiz_id": quiz_id,
+            "entity_id": entity_id,
+        }
+
+        try:
+            await self.db.execute(query=query, values=values)
+        except Exception as e:
+            self.logger.error(f"failed to mark quiz ready due to {e}")
+            return False, "Failed to mark quiz ready", HTTPStatus.INTERNAL_SERVER_ERROR
+
+        return True, "Quiz marked ready to publish", HTTPStatus.OK
+
+    async def revert_quiz_to_draft(self, entity_id: str, quiz_id: str):
+        """Moves a "ready" quiz back to draft so its questions can be edited again."""
+        quiz = await self._get_quiz(entity_id, quiz_id)
+        if not quiz:
+            return False, "Quiz not found", HTTPStatus.NOT_FOUND
+        if quiz["status"] != QuizStatus.ready.value:
+            return False, "Only quizzes marked ready can be moved back to draft", HTTPStatus.BAD_REQUEST
+
+        query = (
+            f"UPDATE {Tables.quizzes} SET status = :status, updated_by = :updated_by "
+            f"WHERE quiz_id = :quiz_id AND entity_id = :entity_id;"
+        )
+        values = {
+            "status": QuizStatus.draft.value,
+            "updated_by": self.x_user["user_id"],
+            "quiz_id": quiz_id,
+            "entity_id": entity_id,
+        }
+
+        try:
+            await self.db.execute(query=query, values=values)
+        except Exception as e:
+            self.logger.error(f"failed to revert quiz to draft due to {e}")
+            return False, "Failed to move quiz back to draft", HTTPStatus.INTERNAL_SERVER_ERROR
+
+        return True, "Quiz moved back to draft", HTTPStatus.OK
+
+    async def publish_quiz(self, entity_id: str, quiz_id: str, scheduled_start):
+        quiz = await self._get_quiz(entity_id, quiz_id)
+        if not quiz:
+            return False, "Quiz not found", HTTPStatus.NOT_FOUND
+        if quiz["status"] == QuizStatus.published.value:
+            return False, "Quiz is already published", HTTPStatus.BAD_REQUEST
+        if quiz["status"] != QuizStatus.ready.value:
+            return False, "Save the quiz as ready before publishing it", HTTPStatus.BAD_REQUEST
+
+        query = (
+            f"UPDATE {Tables.quizzes} SET status = :status, scheduled_start = :scheduled_start, "
+            f"updated_by = :updated_by WHERE quiz_id = :quiz_id AND entity_id = :entity_id;"
+        )
+        values = {
             "status": QuizStatus.published.value,
+            "scheduled_start": scheduled_start,
             "updated_by": self.x_user["user_id"],
             "quiz_id": quiz_id,
             "entity_id": entity_id,

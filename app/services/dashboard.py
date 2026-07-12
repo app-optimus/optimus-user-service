@@ -105,12 +105,13 @@ class DashboardService:
 
     async def fetch_quiz_summary(self, entity_id: str):
         """
-        Returns the total number of active draft and published quizzes for
-        the given school.
+        Returns the total number of active draft, ready, and published
+        quizzes for the given school.
         """
         query = f"""
         SELECT
             SUM(CASE WHEN status = :draft_status THEN 1 ELSE 0 END) AS draft_count,
+            SUM(CASE WHEN status = :ready_status THEN 1 ELSE 0 END) AS ready_count,
             SUM(CASE WHEN status = :published_status THEN 1 ELSE 0 END) AS published_count
         FROM {Tables.quizzes}
         WHERE entity_id = :entity_id AND active = 1;
@@ -122,6 +123,7 @@ class DashboardService:
                 values={
                     "entity_id": entity_id,
                     "draft_status": QuizStatus.draft.value,
+                    "ready_status": QuizStatus.ready.value,
                     "published_status": QuizStatus.published.value,
                 },
             )
@@ -131,6 +133,7 @@ class DashboardService:
 
         data = {
             "draft_count": (row["draft_count"] if row and row["draft_count"] else 0),
+            "ready_count": (row["ready_count"] if row and row["ready_count"] else 0),
             "published_count": (row["published_count"] if row and row["published_count"] else 0),
         }
         return True, "Successfully fetched quiz summary", HTTPStatus.OK, data

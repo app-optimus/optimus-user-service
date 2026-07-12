@@ -13,6 +13,8 @@ class Tables:
     question_templates = "question_templates"
     quizzes = "quizzes"
     quiz_questions = "quiz_questions"
+    subjects = "subjects"
+    study_materials = "study_materials"
 
 
 class UserTypes(str, Enum):
@@ -42,6 +44,7 @@ class GradingModes(str, Enum):
 
 class QuizStatus(str, Enum):
     draft = "draft"
+    ready = "ready"
     published = "published"
 
 
@@ -49,3 +52,15 @@ class QuizStatus(str, Enum):
 # and the builder UI stay fast and simple.
 QUIZ_MIN_QUESTIONS = 3
 QUIZ_MAX_QUESTIONS = 20
+
+
+class MaterialTypes(str, Enum):
+    lecture = "lecture"
+    notes = "notes"
+    sample_quiz = "sample_quiz"
+
+
+STUDY_MATERIAL_MAX_FILE_SIZE_MB = 25
+STUDY_MATERIAL_ALLOWED_EXTENSIONS = {
+    ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".mp4", ".jpg", ".jpeg", ".png", ".zip",
+}

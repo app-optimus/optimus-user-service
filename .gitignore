@@ -17,3 +17,6 @@ target/
 
 #mac
 *.DS_Store
+
+# Locally stored uploaded study material files
+uploads/

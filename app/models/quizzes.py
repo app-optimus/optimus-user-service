@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel, Field, model_validator
@@ -31,9 +32,26 @@ class DeleteQuizModel(BaseModel):
     quiz_id: str = Field(min_length=12, max_length=12)
 
 
+class MarkQuizReadyModel(BaseModel):
+    """"Save" action: locks question editing and marks the quiz ready to be scheduled."""
+
+    entity_id: str = Field(min_length=12, max_length=12)
+    quiz_id: str = Field(min_length=12, max_length=12)
+
+
+class RevertQuizToDraftModel(BaseModel):
+    """Moves a "ready" quiz back to draft so its questions can be edited again."""
+
+    entity_id: str = Field(min_length=12, max_length=12)
+    quiz_id: str = Field(min_length=12, max_length=12)
+
+
 class PublishQuizModel(BaseModel):
     entity_id: str = Field(min_length=12, max_length=12)
     quiz_id: str = Field(min_length=12, max_length=12)
+    # Naive local datetime - when the quiz becomes available to students.
+    # Timezone handling is out of scope for now, same as the rest of the app.
+    scheduled_start: datetime
 
 
 class GetQuizzes(BaseModel):

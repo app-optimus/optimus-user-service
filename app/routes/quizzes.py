@@ -8,7 +8,9 @@ from app.models.quizzes import (
     DeleteQuizModel,
     GetQuizDetail,
     GetQuizzes,
+    MarkQuizReadyModel,
     PublishQuizModel,
+    RevertQuizToDraftModel,
     UpdateQuestionModel,
     UpdateQuizModel,
 )
@@ -103,9 +105,27 @@ async def _delete_question(request: Request, data: DeleteQuestionModel):
     return standard_response_generator(success, message, status_code)
 
 
+@quizzes.post("/save")
+@login_required
+async def _mark_quiz_ready(request: Request, data: MarkQuizReadyModel):
+    processor = QuizService(db=request.app.db, logger=request.app.logger, x_user=request.app.user)
+    success, message, status_code = await processor.mark_quiz_ready(data.entity_id, data.quiz_id)
+    return standard_response_generator(success, message, status_code)
+
+
+@quizzes.post("/revert-to-draft")
+@login_required
+async def _revert_quiz_to_draft(request: Request, data: RevertQuizToDraftModel):
+    processor = QuizService(db=request.app.db, logger=request.app.logger, x_user=request.app.user)
+    success, message, status_code = await processor.revert_quiz_to_draft(data.entity_id, data.quiz_id)
+    return standard_response_generator(success, message, status_code)
+
+
 @quizzes.post("/publish")
 @login_required
 async def _publish_quiz(request: Request, data: PublishQuizModel):
     processor = QuizService(db=request.app.db, logger=request.app.logger, x_user=request.app.user)
-    success, message, status_code = await processor.publish_quiz(data.entity_id, data.quiz_id)
+    success, message, status_code = await processor.publish_quiz(
+        data.entity_id, data.quiz_id, data.scheduled_start
+    )
     return standard_response_generator(success, message, status_code)

@@ -12,6 +12,8 @@ from app.routes.class_structure import class_structure
 from app.routes.dashboard import dashboard
 from app.routes.question_templates import question_templates
 from app.routes.quizzes import quizzes
+from app.routes.subjects import subjects
+from app.routes.study_materials import study_materials
 from app.settings import MYSQL_CONFIG, BASE_ROUTE, LOG_LEVEL, APP_NAME
 
 
@@ -53,6 +55,8 @@ def get_application() -> FastAPI:
     app.include_router(dashboard, tags=["dashboard"], prefix=BASE_ROUTE + "/dashboard")
     app.include_router(question_templates, tags=["question_templates"], prefix=BASE_ROUTE + "/question-templates")
     app.include_router(quizzes, tags=["quizzes"], prefix=BASE_ROUTE + "/quiz")
+    app.include_router(subjects, tags=["subjects"], prefix=BASE_ROUTE + "/subject")
+    app.include_router(study_materials, tags=["study_materials"], prefix=BASE_ROUTE + "/study-material")
 
     return app
 
